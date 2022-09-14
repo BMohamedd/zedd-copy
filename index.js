@@ -2,12 +2,9 @@ const canvas = document.getElementById("canvas");
 const c = canvas.getContext("2d"); // create a context
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
-
-const gravity = 1;
-const friction = 0.9;
-const ballLimit = 200;
-const spawnAttempts = 1;
-const coloringLength = 250;
+const ballLimit = 100;
+let lightSpeed = false;
+let lightSpeedVelocityBoost = 0.01;
 const mousePosition = {
   x: 9999999,
   y: 9999999,
@@ -18,6 +15,12 @@ document.addEventListener("mousemove", (e) => {
   mousePosition.y = e.y;
   return;
 });
+document.onmousedown = () => {
+  lightSpeed = true;
+};
+document.onmouseup = () => {
+  lightSpeed = false;
+};
 
 // utility functions
 
@@ -46,62 +49,6 @@ function diff({ xv, yv, radius = 0 }, { xv1, yv1, radius1 = 0 }) {
   const yDiff = yv - yv1;
   const distance = Math.sqrt(Math.pow(xDiff, 2) + Math.pow(yDiff, 2));
   return distance - (radius1 + radius);
-}
-// collistion
-function rotate(velocity, angle) {
-  const rotatedVelocities = {
-    x: velocity.x * Math.cos(angle) - velocity.y * Math.sin(angle),
-    y: velocity.x * Math.sin(angle) + velocity.y * Math.cos(angle),
-  };
-
-  return rotatedVelocities;
-}
-function resolveCollision(particle, otherParticle) {
-  const xVelocityDiff = particle.Xvelocity - otherParticle.Xvelocity;
-  const yVelocityDiff = particle.Yvelocity - otherParticle.Yvelocity;
-
-  const xDist = otherParticle.xv - particle.xv;
-  const yDist = otherParticle.yv - particle.yv;
-
-  // Prevent accidental overlap of particles
-  if (xVelocityDiff * xDist + yVelocityDiff * yDist >= 0) {
-    // Grab angle between the two colliding particles
-    const angle = -Math.atan2(
-      otherParticle.yv - particle.yv,
-      otherParticle.xv - particle.xv
-    );
-
-    // Store mass in var for better readability in collision equation
-    const m1 = particle.mass;
-    const m2 = otherParticle.mass;
-
-    // Velocity before equation
-    const u1 = rotate({ x: particle.Xvelocity, y: particle.Yvelocity }, angle);
-    const u2 = rotate(
-      { x: otherParticle.Xvelocity, y: otherParticle.Yvelocity },
-      angle
-    );
-
-    // Velocity after 1d collision equation
-    const v1 = {
-      x: (u1.x * (m1 - m2)) / (m1 + m2) + (u2.x * 2 * m2) / (m1 + m2),
-      y: u1.y,
-    };
-    const v2 = {
-      x: (u2.x * (m1 - m2)) / (m1 + m2) + (u1.x * 2 * m2) / (m1 + m2),
-      y: u2.y,
-    };
-
-    // Final velocity after rotating axis back to original location
-    const vFinal1 = rotate(v1, -angle);
-    const vFinal2 = rotate(v2, -angle);
-
-    // Swap particle velocities for realistic bounce effect
-    return [
-      { ...particle, ...{ Xvelocity: vFinal1.x, Yvelocity: vFinal1.y } },
-      { ...otherParticle, ...{ Xvelocity: vFinal2.x, Yvelocity: vFinal2.y } },
-    ];
-  }
 }
 // hex2rgba
 const hex2rgba = (hex, alpha = 1) => {
@@ -166,139 +113,87 @@ var colors = [
 var ballsArray = [];
 class Ball {
   constructor({
-    height = 10,
-    width = 10,
     xv = innerWidth / 2,
     yv = innerHeight / 2,
     radius = 40,
     color = "black",
-    Yvelocity = 1,
-    Xvelocity = 1,
+    velocity = 0.1,
   }) {
-    this.height = height;
-    this.width = width;
+    this.randomDistanceFromCenter = random(10, innerWidth / 2);
     this.xv = xv;
     this.yv = yv;
+    this.x = innerWidth / 2;
+    this.y = innerHeight / 2;
     this.radius = radius;
     this.color = color;
-    this.Yvelocity = Yvelocity;
-    this.Xvelocity = Xvelocity;
-    this.mass = 1;
-    this.alpha = 0;
+    this.velocity = velocity;
+    this.steem = 0;
+    this.rad = Math.random() * Math.PI * 2;
   }
-  update(ballsArray) {
-    // walls collition
-    if (this.yv + this.radius > innerHeight || this.yv - this.radius < 0) {
-      // if the ball hits the ground apply friction to its x and y vilocity
-      this.Yvelocity = -this.Yvelocity;
-    }
-    if (
-      this.xv + this.radius + this.Xvelocity > innerWidth ||
-      this.xv - this.radius < 0
-    ) {
-      // if the ball hits one of the walls apply friction to it
-      this.Xvelocity = -this.Xvelocity;
-    }
-    this.xv += this.Xvelocity;
-    this.yv += this.Yvelocity;
-    // balls collision
-    for (var j = 0; j < ballsArray.length; j++) {
-      if (ballsArray[j] === this) continue;
-      const diffrence = diff(
-        { xv: this.xv, yv: this.yv, radius: this.radius },
-        {
-          xv1: ballsArray[j].xv,
-          yv1: ballsArray[j].yv,
-          radius1: ballsArray[j].radius,
+  update() {
+    this.rad += this.velocity;
+    this.xv = this.x + Math.cos(this.rad) * this.randomDistanceFromCenter;
+    this.yv = this.y + Math.sin(this.rad) * this.randomDistanceFromCenter;
+    this.draw();
+  }
+  draw() {
+    if (this.steem > 0 || lightSpeed) {
+      // glow
+      c.beginPath();
+      c.arc(this.xv, this.yv, this.radius * 5, Math.PI * 2, false);
+      c.fillStyle = hex2rgba(this.color, this.steem);
+      c.fill();
+      c.closePath();
+      // if the lightspeed is on and the steem tank isn't full start filling it up
+      if (this.steem < 0.06 && lightSpeed) {
+        this.steem += 0.001;
+        if (this.velocity <= 0.009) {
+          this.velocity += lightSpeedVelocityBoost;
         }
-      );
-      if (diffrence < 0) {
-        // collision happened
-        const newV = resolveCollision(this, ballsArray[j]);
-        if (newV) {
-          this.Xvelocity = newV[0].Xvelocity;
-          this.Yvelocity = newV[0].Yvelocity;
-          ballsArray[j].Xvelocity = newV[1].Xvelocity;
-          ballsArray[j].Yvelocity = newV[1].Yvelocity;
+      }
+      // if the lightspeed is off and there is steem in the tank use it
+      else if (!lightSpeed) {
+        this.steem -= 0.0005;
+        if (this.steem < 0.009) {
+          this.steem = 0;
+        }
+        if (this.velocity > 0.009) {
+          this.velocity -= lightSpeedVelocityBoost;
         }
       }
     }
-    // coloring
-    const mouseAndThisDiff = diff(
-      { xv: this.xv, yv: this.yv },
-      { xv1: mousePosition.x, yv1: mousePosition.y }
-    );
-    if (mouseAndThisDiff < coloringLength) {
-      this.draw({ color: true, uncolor: false });
-    } else {
-      this.draw({ color: false, uncolor: true });
-    }
-  }
-  draw({ color = false, uncolor = true }) {
+    // circle
     c.beginPath();
     c.arc(this.xv, this.yv, this.radius, Math.PI * 2, false);
-    c.strokeStyle = this.color;
-    c.stroke();
-
-    if (color) {
-      c.fillStyle = hex2rgba(this.color, this.alpha);
-      if (this.alpha < 1) {
-        this.alpha += random(0.01, 0.3);
-      }
-      c.fill();
-    } else if (uncolor && this.alpha > 0) {
-      c.fillStyle = hex2rgba(this.color, this.alpha);
-      if (this.alpha > 0) {
-        this.alpha -= random(0.01, 0.09);
-      }
-      c.fill();
-    }
-
+    c.fillStyle = this.color;
+    c.fill();
     c.closePath();
   }
 }
 // spawn loop
 for (var i = 0; i < ballLimit; i++) {
   const config = {
-    height: random(10, 40),
     width: this.height,
     color: colors[Math.round(random(0, 16))],
-    Yvelocity: random(-3, 3),
-    Xvelocity: random(-3, 3),
-    radius: 20,
-    xv: random(40, innerWidth - 40),
-    yv: random(40, innerHeight - 40),
+    velocity: 0.009,
+    radius: random(0.5, 1),
+    xv: innerWidth / 2,
+    yv: innerHeight / 2,
   };
-  let overlap = false;
-  let attemptsLeft = spawnAttempts;
-  // check for collition
-  while (attemptsLeft >= 0) {
-    for (var j = 0; j < ballsArray.length; j++) {
-      const diffrence = diff(
-        { xv: config.xv, yv: config.yv, radius: config.radius },
-        {
-          xv1: ballsArray[j].xv,
-          yv1: ballsArray[j].yv,
-          radius1: ballsArray[j].radius,
-        }
-      );
-      if (diffrence < 0) {
-        overlap = true;
-        break;
-      }
-    }
-    attemptsLeft--;
-  }
-  if (!overlap) {
-    ballsArray.push(new Ball(config));
-  }
+  // add ball to the array
+  ballsArray.push(new Ball(config));
 }
 // animate ball1
 function animate() {
-  c.clearRect(0, 0, innerWidth, innerHeight);
+  if (lightSpeed) {
+    c.fillStyle = "rgba(0, 0, 0, 0.1)";
+  } else {
+    c.fillStyle = "rgba(0, 0, 0, 1)";
+  }
+  c.fillRect(0, 0, innerWidth, innerHeight);
   if (ballsArray.length > 0) {
     for (var i = 0; i < ballsArray.length; i++) {
-      ballsArray[i].update(ballsArray);
+      ballsArray[i].update();
     }
   }
   requestAnimationFrame(animate);
